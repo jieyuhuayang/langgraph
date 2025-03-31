@@ -926,6 +926,7 @@ class Pregel(PregelProtocol):
                     channels,
                     [PregelTaskWrites((), INPUT, null_writes, [])],
                     None,
+                    self.trigger_to_nodes,
                 )
             if apply_pending_writes and saved.pending_writes:
                 for tid, k, v in saved.pending_writes:
@@ -935,7 +936,9 @@ class Pregel(PregelProtocol):
                         continue
                     next_tasks[tid].writes.append((k, v))
                 if tasks := [t for t in next_tasks.values() if t.writes]:
-                    apply_writes(saved.checkpoint, channels, tasks, None)
+                    apply_writes(
+                        saved.checkpoint, channels, tasks, None, self.trigger_to_nodes
+                    )
             # assemble the state snapshot
             return StateSnapshot(
                 read_channels(channels, self.stream_channels_asis),
@@ -1045,6 +1048,7 @@ class Pregel(PregelProtocol):
                     channels,
                     [PregelTaskWrites((), INPUT, null_writes, [])],
                     None,
+                    self.trigger_to_nodes,
                 )
             if apply_pending_writes and saved.pending_writes:
                 for tid, k, v in saved.pending_writes:
@@ -1054,7 +1058,9 @@ class Pregel(PregelProtocol):
                         continue
                     next_tasks[tid].writes.append((k, v))
                 if tasks := [t for t in next_tasks.values() if t.writes]:
-                    apply_writes(saved.checkpoint, channels, tasks, None)
+                    apply_writes(
+                        saved.checkpoint, channels, tasks, None, self.trigger_to_nodes
+                    )
             # assemble the state snapshot
             return StateSnapshot(
                 read_channels(channels, self.stream_channels_asis),
@@ -1378,6 +1384,7 @@ class Pregel(PregelProtocol):
                                 channels,
                                 [PregelTaskWrites((), INPUT, null_writes, [])],
                                 None,
+                                self.trigger_to_nodes,
                             )
                         # apply writes from tasks that already ran
                         for tid, k, v in saved.pending_writes or []:
@@ -1387,7 +1394,13 @@ class Pregel(PregelProtocol):
                                 continue
                             next_tasks[tid].writes.append((k, v))
                         # clear all current tasks
-                        apply_writes(checkpoint, channels, next_tasks.values(), None)
+                        apply_writes(
+                            checkpoint,
+                            channels,
+                            next_tasks.values(),
+                            None,
+                            self.trigger_to_nodes,
+                        )
                     # save checkpoint
                     next_config = checkpointer.put(
                         checkpoint_config,
@@ -1446,6 +1459,7 @@ class Pregel(PregelProtocol):
                             channels,
                             [PregelTaskWrites((), INPUT, input_writes, [])],
                             checkpointer.get_next_version,
+                            self.trigger_to_nodes,
                         )
 
                         # apply input write to channels
@@ -1546,6 +1560,7 @@ class Pregel(PregelProtocol):
                             channels,
                             [PregelTaskWrites((), INPUT, null_writes, [])],
                             None,
+                            self.trigger_to_nodes,
                         )
                     # apply writes
                     for tid, k, v in saved.pending_writes:
@@ -1555,7 +1570,9 @@ class Pregel(PregelProtocol):
                             continue
                         next_tasks[tid].writes.append((k, v))
                     if tasks := [t for t in next_tasks.values() if t.writes]:
-                        apply_writes(checkpoint, channels, tasks, None)
+                        apply_writes(
+                            checkpoint, channels, tasks, None, self.trigger_to_nodes
+                        )
             valid_updates: list[tuple[str, dict[str, Any] | None]] = []
             if len(updates) == 1:
                 values, as_node = updates[0]
@@ -1643,7 +1660,11 @@ class Pregel(PregelProtocol):
                     checkpointer.put_writes(checkpoint_config, channel_writes, task_id)
             # apply to checkpoint and save
             mv_writes, _ = apply_writes(
-                checkpoint, channels, run_tasks, checkpointer.get_next_version
+                checkpoint,
+                channels,
+                run_tasks,
+                checkpointer.get_next_version,
+                self.trigger_to_nodes,
             )
             assert not mv_writes, "Can't write to SharedValues from update_state"
             checkpoint = create_checkpoint(checkpoint, channels, step + 1)
@@ -1793,6 +1814,7 @@ class Pregel(PregelProtocol):
                                 channels,
                                 [PregelTaskWrites((), INPUT, null_writes, [])],
                                 None,
+                                self.trigger_to_nodes,
                             )
                         # apply writes from tasks that already ran
                         for tid, k, v in saved.pending_writes or []:
@@ -1802,7 +1824,13 @@ class Pregel(PregelProtocol):
                                 continue
                             next_tasks[tid].writes.append((k, v))
                         # clear all current tasks
-                        apply_writes(checkpoint, channels, next_tasks.values(), None)
+                        apply_writes(
+                            checkpoint,
+                            channels,
+                            next_tasks.values(),
+                            None,
+                            self.trigger_to_nodes,
+                        )
                     # save checkpoint
                     next_config = await checkpointer.aput(
                         checkpoint_config,
@@ -1861,6 +1889,7 @@ class Pregel(PregelProtocol):
                             channels,
                             [PregelTaskWrites((), INPUT, input_writes, [])],
                             checkpointer.get_next_version,
+                            self.trigger_to_nodes,
                         )
 
                         # apply input write to channels
@@ -1961,6 +1990,7 @@ class Pregel(PregelProtocol):
                             channels,
                             [PregelTaskWrites((), INPUT, null_writes, [])],
                             None,
+                            self.trigger_to_nodes,
                         )
                     for tid, k, v in saved.pending_writes:
                         if k in (ERROR, INTERRUPT, SCHEDULED):
@@ -1969,7 +1999,9 @@ class Pregel(PregelProtocol):
                             continue
                         next_tasks[tid].writes.append((k, v))
                     if tasks := [t for t in next_tasks.values() if t.writes]:
-                        apply_writes(checkpoint, channels, tasks, None)
+                        apply_writes(
+                            checkpoint, channels, tasks, None, self.trigger_to_nodes
+                        )
             valid_updates: list[tuple[str, dict[str, Any] | None]] = []
             if len(updates) == 1:
                 values, as_node = updates[0]
@@ -2055,7 +2087,11 @@ class Pregel(PregelProtocol):
                     )
             # apply to checkpoint and save
             mv_writes, _ = apply_writes(
-                checkpoint, channels, run_tasks, checkpointer.get_next_version
+                checkpoint,
+                channels,
+                run_tasks,
+                checkpointer.get_next_version,
+                self.trigger_to_nodes,
             )
             assert not mv_writes, "Can't write to SharedValues from update_state"
             checkpoint = create_checkpoint(checkpoint, channels, step + 1)

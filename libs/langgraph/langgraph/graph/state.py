@@ -33,6 +33,7 @@ from langgraph.channels.dynamic_barrier_value import DynamicBarrierValue, WaitFo
 from langgraph.channels.ephemeral_value import EphemeralValue
 from langgraph.channels.last_value import LastValue
 from langgraph.channels.named_barrier_value import NamedBarrierValue
+from langgraph.channels.open_at_the_close_value import OpenAtTheCloseValue
 from langgraph.checkpoint.base import Checkpoint
 from langgraph.constants import (
     EMPTY_SEQ,
@@ -108,6 +109,7 @@ class StateNodeSpec(NamedTuple):
     input: type[Any]
     retry_policy: Optional[Union[RetryPolicy, Sequence[RetryPolicy]]]
     ends: Optional[Union[tuple[str, ...], dict[str, str]]] = EMPTY_SEQ
+    barrier: bool = False
 
 
 class StateGraph(Graph):
@@ -295,6 +297,7 @@ class StateGraph(Graph):
         node: Union[str, RunnableLike],
         action: Optional[RunnableLike] = None,
         *,
+        barrier: bool = False,
         metadata: Optional[dict[str, Any]] = None,
         input: Optional[type[Any]] = None,
         retry: Optional[Union[RetryPolicy, Sequence[RetryPolicy]]] = None,
@@ -440,6 +443,7 @@ class StateGraph(Graph):
             input=input or self.schema,
             retry_policy=retry,
             ends=ends,
+            barrier=barrier,
         )
         return self
 
@@ -802,7 +806,11 @@ class CompiledStateGraph(CompiledGraph):
                 self.schema_to_mapper[input_schema] = mapper
 
             branch_channel = CHANNEL_BRANCH_TO.format(key)
-            self.channels[branch_channel] = EphemeralValue(Any, guard=False)
+            self.channels[branch_channel] = (
+                OpenAtTheCloseValue(Any)
+                if node.barrier
+                else EphemeralValue(Any, guard=False)
+            )
             self.nodes[key] = PregelNode(
                 triggers=[branch_channel],
                 # read state keys and managed values

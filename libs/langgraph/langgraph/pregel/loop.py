@@ -482,6 +482,7 @@ class PregelLoop(LoopProtocol):
                 self.channels,
                 self.tasks.values(),
                 self.checkpointer_get_next_version,
+                self.trigger_to_nodes,
             )
             # apply writes to managed values
             for key, values in mv_writes.items():
@@ -671,6 +672,7 @@ class PregelLoop(LoopProtocol):
                 self.channels,
                 [PregelTaskWrites((), INPUT, null_writes, [])],
                 self.checkpointer_get_next_version,
+                self.trigger_to_nodes,
             )
             for key, values in mv_writes.items():
                 self._update_mv(key, values)
@@ -723,6 +725,7 @@ class PregelLoop(LoopProtocol):
                     PregelTaskWrites((), INPUT, input_writes, []),
                 ],
                 self.checkpointer_get_next_version,
+                self.trigger_to_nodes,
             )
             assert not mv_writes, "Can't write to SharedValues in graph input"
             # save input checkpoint
@@ -860,6 +863,7 @@ class PregelLoop(LoopProtocol):
                     self.channels,
                     self.tasks.values(),
                     self.checkpointer_get_next_version,
+                    self.trigger_to_nodes,
                 )
                 for key, values in mv_writes.items():
                     self._update_mv(key, values)
