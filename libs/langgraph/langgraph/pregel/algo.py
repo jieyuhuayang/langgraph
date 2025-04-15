@@ -338,7 +338,7 @@ def apply_writes(
     if (
         bump_step
         and not checkpoint["pending_sends"]
-        and updated_channels.isdisjoint(trigger_to_nodes.keys())
+        and updated_channels.isdisjoint(trigger_to_nodes)
     ):
         for chan in channels:
             if channels[chan].finish():
