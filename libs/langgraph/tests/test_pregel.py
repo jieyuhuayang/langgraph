@@ -37,6 +37,7 @@ from pytest_mock import MockerFixture
 from syrupy import SnapshotAssertion
 from typing_extensions import TypedDict
 
+from langgraph.cache.base import BaseCache
 from langgraph.channels.base import BaseChannel
 from langgraph.channels.binop import BinaryOperatorAggregate
 from langgraph.channels.context import Context
@@ -63,6 +64,7 @@ from langgraph.pregel.retry import RetryPolicy
 from langgraph.pregel.runner import PregelRunner
 from langgraph.store.base import BaseStore
 from langgraph.types import (
+    CachePolicy,
     Command,
     Interrupt,
     PregelTask,
@@ -6200,7 +6202,7 @@ def test_falsy_return_from_task(
 
 @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
 def test_multiple_interrupts_functional(
-    request: pytest.FixtureRequest, checkpointer_name: str, snapshot: SnapshotAssertion
+    request: pytest.FixtureRequest, checkpointer_name: str
 ):
     """Test multiple interrupts with functional API."""
     checkpointer = request.getfixturevalue(f"checkpointer_{checkpointer_name}")
@@ -6233,6 +6235,48 @@ def test_multiple_interrupts_functional(
     # `double` value should be cached appropriately when used w/ `interrupt`
     assert result == {
         "values": [2, "a", 4, "b", 6, "c"],
+    }
+    assert counter == 3
+
+
+@pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
+def test_multiple_interrupts_functional_cache(
+    request: pytest.FixtureRequest, checkpointer_name: str, file_cache: BaseCache
+):
+    """Test multiple interrupts with functional API."""
+    checkpointer = request.getfixturevalue(f"checkpointer_{checkpointer_name}")
+
+    counter = 0
+
+    @task(cache=CachePolicy())
+    def double(x: int) -> int:
+        """Increment the counter."""
+        nonlocal counter
+        counter += 1
+        return 2 * x
+
+    @entrypoint(checkpointer=checkpointer, cache=file_cache)
+    def graph(state: dict) -> dict:
+        """React tool."""
+
+        values = []
+
+        for idx in [1, 1, 2, 2, 3, 3]:
+            values.extend([double(idx).result(), interrupt({"a": "boo"})])
+
+        return {"values": values}
+
+    configurable = {"configurable": {"thread_id": str(uuid.uuid4())}}
+    graph.invoke({}, configurable)
+    graph.invoke(Command(resume="a"), configurable)
+    graph.invoke(Command(resume="b"), configurable)
+    graph.invoke(Command(resume="c"), configurable)
+    graph.invoke(Command(resume="d"), configurable)
+    graph.invoke(Command(resume="e"), configurable)
+    result = graph.invoke(Command(resume="f"), configurable)
+    # `double` value should be cached appropriately when used w/ `interrupt`
+    assert result == {
+        "values": [2, "a", 2, "b", 4, "c", 4, "d", 6, "e", 6, "f"],
     }
     assert counter == 3
 
@@ -6351,9 +6395,7 @@ def test_double_interrupt_subgraph(
 
 
 @pytest.mark.parametrize("checkpointer_name", ALL_CHECKPOINTERS_SYNC)
-def test_multi_resume(
-    request: pytest.FixtureRequest, checkpointer_name: str
-) -> None:
+def test_multi_resume(request: pytest.FixtureRequest, checkpointer_name: str) -> None:
     checkpointer = request.getfixturevalue(f"checkpointer_{checkpointer_name}")
 
     class ChildState(TypedDict):
@@ -6362,11 +6404,11 @@ def test_multi_resume(
         human_inputs: list[str]
 
     def get_human_input(state: ChildState):
-        human_input = interrupt(state['prompt'])
+        human_input = interrupt(state["prompt"])
 
         return {
-            'human_input': human_input,
-            'human_inputs': [human_input],
+            "human_input": human_input,
+            "human_inputs": [human_input],
         }
 
     child_graph = (
@@ -6385,13 +6427,13 @@ def test_multi_resume(
         return [
             Send(
                 "child_graph",
-                {'prompt': prompt},
+                {"prompt": prompt},
             )
-            for prompt in state['prompts']
+            for prompt in state["prompts"]
         ]
 
     def cleanup(state: ParentState):
-        assert len(state['human_inputs']) == len(state["prompts"])
+        assert len(state["human_inputs"]) == len(state["prompts"])
 
     parent_graph = (
         StateGraph(ParentState)
@@ -6404,21 +6446,19 @@ def test_multi_resume(
     )
 
     thread_config: RunnableConfig = {
-        'configurable': {
-            'thread_id': uuid.uuid4(),
+        "configurable": {
+            "thread_id": uuid.uuid4(),
         },
     }
 
-    prompts = ['a', 'b', 'c', 'd', 'e']
+    prompts = ["a", "b", "c", "d", "e"]
 
     events = parent_graph.invoke(
-        {'prompts': prompts},
-        thread_config,
-        stream_mode='values'
+        {"prompts": prompts}, thread_config, stream_mode="values"
     )
 
-    assert len(events['__interrupt__']) == len(prompts)
-    interrupt_values = {i.value for i in events['__interrupt__']}
+    assert len(events["__interrupt__"]) == len(prompts)
+    interrupt_values = {i.value for i in events["__interrupt__"]}
     assert interrupt_values == set(prompts)
 
     resume_map: dict[str, str] = {
@@ -6428,11 +6468,8 @@ def test_multi_resume(
 
     result = parent_graph.invoke(Command(resume=resume_map), thread_config)
     assert result == {
-        'prompts': prompts,
-        'human_inputs': [
-            f"human input for prompt {prompt}"
-            for prompt in prompts
-        ],
+        "prompts": prompts,
+        "human_inputs": [f"human input for prompt {prompt}" for prompt in prompts],
     }
 
 
