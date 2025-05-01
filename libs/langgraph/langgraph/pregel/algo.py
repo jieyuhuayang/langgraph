@@ -113,12 +113,12 @@ class PregelTaskWrites(NamedTuple):
 
 
 class Call:
-    __slots__ = ("func", "input", "retry", "cache", "callbacks")
+    __slots__ = ("func", "input", "retry", "cache_policy", "callbacks")
 
     func: Callable
     input: tuple[tuple[Any, ...], dict[str, Any]]
     retry: Optional[Sequence[RetryPolicy]]
-    cache: Optional[CachePolicy]
+    cache_policy: Optional[CachePolicy]
     callbacks: Callbacks
 
     def __init__(
@@ -127,13 +127,13 @@ class Call:
         input: tuple[tuple[Any, ...], dict[str, Any]],
         *,
         retry: Optional[Sequence[RetryPolicy]],
-        cache: Optional[CachePolicy],
+        cache_policy: Optional[CachePolicy],
         callbacks: Callbacks,
     ) -> None:
         self.func = func
         self.input = input
         self.retry = retry
-        self.cache = cache
+        self.cache_policy = cache_policy
         self.callbacks = callbacks
 
 
@@ -616,13 +616,14 @@ def prepare_single_task(
                                 if parent_ns
                                 else b"",
                                 (identifier(call.func) or "__dynamic__").encode(),
-                                call.cache.key(*call.input[0], **call.input[1]),
+                                call.cache_policy.key(*call.input[0], **call.input[1]),
                             )
                         )
                     ),
-                    call.cache.ttl,
+                    call.cache_policy.ttl,
+                    call.cache_policy.refresh,
                 )
-                if call.cache
+                if call.cache_policy
                 else None,
                 task_id,
                 task_path,
@@ -748,6 +749,7 @@ def prepare_single_task(
                         )
                     ),
                     proc.cache_policy.ttl,
+                    proc.cache_policy.refresh,
                 )
                 if proc.cache_policy
                 else None,
@@ -892,6 +894,7 @@ def prepare_single_task(
                                 )
                             ),
                             proc.cache_policy.ttl,
+                            proc.cache_policy.refresh,
                         )
                         if proc.cache_policy
                         else None,
