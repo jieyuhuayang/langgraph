@@ -401,6 +401,8 @@ def prepare_next_tasks(
     manager: Union[None, ParentRunManager, AsyncParentRunManager] = None,
     trigger_to_nodes: Optional[Mapping[str, Sequence[str]]] = None,
     updated_channels: Optional[set[str]] = None,
+    retry_policy: Sequence[RetryPolicy] = (),
+    cache_policy: Optional[CachePolicy] = None,
 ) -> Union[dict[str, PregelTask], dict[str, PregelExecutableTask]]:
     """Prepare the set of tasks that will make up the next Pregel step.
 
@@ -451,6 +453,8 @@ def prepare_next_tasks(
             checkpointer=checkpointer,
             manager=manager,
             input_cache=input_cache,
+            cache_policy=cache_policy,
+            retry_policy=retry_policy,
         ):
             tasks.append(task)
 
@@ -494,6 +498,8 @@ def prepare_next_tasks(
             checkpointer=checkpointer,
             manager=manager,
             input_cache=input_cache,
+            cache_policy=cache_policy,
+            retry_policy=retry_policy,
         ):
             tasks.append(task)
     return {t.id: t for t in tasks}
@@ -520,6 +526,8 @@ def prepare_single_task(
     checkpointer: Optional[BaseCheckpointSaver] = None,
     manager: Union[None, ParentRunManager, AsyncParentRunManager] = None,
     input_cache: Optional[dict[INPUT_CACHE_KEY_TYPE, Any]] = None,
+    cache_policy: Optional[CachePolicy] = None,
+    retry_policy: Sequence[RetryPolicy] = (),
 ) -> Union[None, PregelTask, PregelExecutableTask]:
     """Prepares a single task for the next Pregel step, given a task path, which
     uniquely identifies a PUSH or PULL task within the graph."""
@@ -562,8 +570,9 @@ def prepare_single_task(
             assert task_id == task_id_checksum, f"{task_id} != {task_id_checksum}"
         if for_execution:
             writes: deque[tuple[str, Any]] = deque()
-            if call.cache_policy:
-                args_key = call.cache_policy.key(*call.input[0], **call.input[1])
+            cache_policy = call.cache_policy or cache_policy
+            if cache_policy:
+                args_key = cache_policy.key(*call.input[0], **call.input[1])
                 cache_key: Optional[CacheKey] = CacheKey(
                     xxh3_128_hexdigest(
                         b"".join(
@@ -579,8 +588,8 @@ def prepare_single_task(
                             )
                         )
                     ),
-                    call.cache_policy.ttl,
-                    call.cache_policy.refresh,
+                    cache_policy.ttl,
+                    cache_policy.refresh,
                 )
             else:
                 cache_key = None
@@ -628,7 +637,7 @@ def prepare_single_task(
                     },
                 ),
                 triggers,
-                call.retry,
+                call.retry or retry_policy,
                 cache_key,
                 task_id,
                 task_path,
@@ -691,8 +700,9 @@ def prepare_single_task(
             if proc.metadata:
                 metadata.update(proc.metadata)
             writes = deque()
-            if proc.cache_policy:
-                args_key = proc.cache_policy.key(packet.arg)
+            cache_policy = proc.cache_policy or cache_policy
+            if cache_policy:
+                args_key = cache_policy.key(packet.arg)
                 cache_key = CacheKey(
                     xxh3_128_hexdigest(
                         b"".join(
@@ -708,8 +718,8 @@ def prepare_single_task(
                             )
                         )
                     ),
-                    proc.cache_policy.ttl,
-                    proc.cache_policy.refresh,
+                    cache_policy.ttl,
+                    cache_policy.refresh,
                 )
             else:
                 cache_key = None
@@ -761,7 +771,7 @@ def prepare_single_task(
                     },
                 ),
                 triggers,
-                proc.retry_policy,
+                proc.retry_policy or retry_policy,
                 cache_key,
                 task_id,
                 task_path,
@@ -829,8 +839,9 @@ def prepare_single_task(
                     if proc.metadata:
                         metadata.update(proc.metadata)
                     writes = deque()
-                    if proc.cache_policy:
-                        args_key = proc.cache_policy.key(val)
+                    cache_policy = proc.cache_policy or cache_policy
+                    if cache_policy:
+                        args_key = cache_policy.key(val)
                         cache_key = CacheKey(
                             xxh3_128_hexdigest(
                                 b"".join(
@@ -846,8 +857,8 @@ def prepare_single_task(
                                     )
                                 )
                             ),
-                            proc.cache_policy.ttl,
-                            proc.cache_policy.refresh,
+                            cache_policy.ttl,
+                            cache_policy.refresh,
                         )
                     else:
                         cache_key = None
@@ -911,7 +922,7 @@ def prepare_single_task(
                             },
                         ),
                         triggers,
-                        proc.retry_policy,
+                        proc.retry_policy or retry_policy,
                         cache_key,
                         task_id,
                         task_path[:3],

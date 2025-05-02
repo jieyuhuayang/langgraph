@@ -27,6 +27,7 @@ from pydantic.v1 import BaseModel as BaseModelV1
 from typing_extensions import Self
 
 from langgraph._api.deprecation import LangGraphDeprecationWarning
+from langgraph.cache.base import BaseCache
 from langgraph.channels.base import BaseChannel
 from langgraph.channels.binop import BinaryOperatorAggregate
 from langgraph.channels.dynamic_barrier_value import DynamicBarrierValue, WaitForNames
@@ -578,6 +579,7 @@ class StateGraph(Graph):
         self,
         checkpointer: Checkpointer = None,
         *,
+        cache: Optional[BaseCache] = None,
         store: Optional[BaseStore] = None,
         interrupt_before: Optional[Union[All, list[str]]] = None,
         interrupt_after: Optional[Union[All, list[str]]] = None,
@@ -661,6 +663,7 @@ class StateGraph(Graph):
             auto_validate=False,
             debug=debug,
             store=store,
+            cache=cache,
             name=name or "LangGraph",
         )
 
